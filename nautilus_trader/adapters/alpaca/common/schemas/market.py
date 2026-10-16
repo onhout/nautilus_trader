@@ -35,7 +35,8 @@ class AlpacaAsset(msgspec.Struct, frozen=True):
 
     @property
     def options_enabled(self) -> bool:
-        return "options_enabled" in (self.attributes or [])
+        attributes = self.attributes or []
+        return "has_options" in attributes or "options_enabled" in attributes
 
 
 class AlpacaOptionContract(msgspec.Struct, frozen=True):

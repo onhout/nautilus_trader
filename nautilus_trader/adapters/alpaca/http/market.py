@@ -35,12 +35,19 @@ from nautilus_trader.core.nautilus_pyo3 import HttpMethod
 
 class AlpacaAssetsHttp(AlpacaHttpEndpoint):
     """
+    `GET /v2/assets`
     `GET /v2/assets/{symbol}`
     """
 
     def __init__(self, client: AlpacaHttpClient) -> None:
         super().__init__(client, "/v2/assets")
         self._decoder = msgspec.json.Decoder(AlpacaAsset)
+        self._list_decoder = msgspec.json.Decoder(list[AlpacaAsset])
+
+    async def list(self, status: str | None = "active", asset_class: str | None = "us_equity") -> list[AlpacaAsset]:
+        return self._list_decoder.decode(
+            await self._method(HttpMethod.GET, params={"status": status, "asset_class": asset_class}),
+        )
 
     async def get(self, symbol: str) -> AlpacaAsset | None:
         try:
@@ -131,6 +138,12 @@ class AlpacaMarketHttpAPI:
 
     async def query_asset(self, symbol: str) -> AlpacaAsset | None:
         return await self._endpoint_assets.get(symbol)
+
+    async def query_assets(self, status: str | None = "active", asset_class: str | None = "us_equity") -> list[AlpacaAsset]:
+        """
+        Return every asset of a class (``us_equity`` covers stocks and ETFs; ``crypto`` for coins).
+        """
+        return await self._endpoint_assets.list(status=status, asset_class=asset_class)
 
     async def query_option_contract(self, symbol: str) -> AlpacaOptionContract | None:
         return await self._endpoint_contracts.get(symbol)

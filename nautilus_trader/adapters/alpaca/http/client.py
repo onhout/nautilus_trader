@@ -13,6 +13,7 @@
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
 
+import asyncio
 import urllib.parse
 from typing import Any
 
@@ -30,6 +31,19 @@ from nautilus_trader.core.nautilus_pyo3 import HttpMethod
 from nautilus_trader.core.nautilus_pyo3 import HttpResponse
 from nautilus_trader.core.nautilus_pyo3 import Quota
 from nautilus_trader.core.nautilus_pyo3 import mask_api_key
+
+
+_MAX_429_RETRIES = 6
+
+
+def _retry_after_secs(headers) -> float | None:
+    for key, value in (dict(headers) if headers else {}).items():
+        if key.lower() == "retry-after":
+            try:
+                return max(1.0, float(value))
+            except (TypeError, ValueError):
+                return None
+    return None
 
 
 class AlpacaHttpClient:
@@ -124,13 +138,21 @@ class AlpacaHttpClient:
         url = (self._data_url if data_api else self._base_url) + url_path
         self._log.debug(f"{http_method} {url_path} {body or ''}", LogColor.MAGENTA)
 
-        response: HttpResponse = await self._client.request(
-            http_method,
-            url=url,
-            headers=self._headers,
-            body=msgspec.json.encode(body) if body is not None else None,
-            keys=(ratelimiter_keys or []) + [ALPACA_GLOBAL_RATE_KEY],
-        )
+        # Alpaca's request limit is per account, so other processes can exhaust it: reads wait
+        # and retry on 429 (Retry-After when given). Order submissions are never retried here.
+        for attempt in range(_MAX_429_RETRIES + 1):
+            response: HttpResponse = await self._client.request(
+                http_method,
+                url=url,
+                headers=self._headers,
+                body=msgspec.json.encode(body) if body is not None else None,
+                keys=(ratelimiter_keys or []) + [ALPACA_GLOBAL_RATE_KEY],
+            )
+            if response.status != 429 or http_method != HttpMethod.GET or attempt == _MAX_429_RETRIES:
+                break
+            delay = _retry_after_secs(response.headers) or min(30.0, 2.0**attempt)
+            self._log.warning(f"Alpaca rate limit (429) on {url_path}: retrying in {delay:.0f}s")
+            await asyncio.sleep(delay)
 
         if response.status >= 400:
             try:

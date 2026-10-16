@@ -48,6 +48,13 @@ class AlpacaDataClientConfig(LiveDataClientConfig, frozen=True):
         Stock quotes feed: IEX (free) or SIP (Algo Trader Plus).
     option_feed : AlpacaDataFeed, default INDICATIVE
         Option quotes feed: INDICATIVE (free) or OPRA (Algo Trader Plus).
+    bar_feed : AlpacaDataFeed, default SIP
+        Feed live stock bars are built from (SIP: all exchanges, the same as Alpaca history).
+    bar_delay_secs : PositiveInt, default 960
+        Wait this long after a bar period closes before fetching it (the free plan serves SIP up
+        to 15 minutes ago; with Algo Trader Plus a few seconds are enough).
+    bar_poll_secs : PositiveInt, default 15
+        How often subscribed bars are checked for completion.
     proxy_url : str, optional
         The proxy URL for HTTP and WebSocket requests.
 
@@ -58,6 +65,9 @@ class AlpacaDataClientConfig(LiveDataClientConfig, frozen=True):
     environment: AlpacaEnvironment = AlpacaEnvironment.PAPER
     stock_feed: AlpacaDataFeed = AlpacaDataFeed.IEX
     option_feed: AlpacaDataFeed = AlpacaDataFeed.INDICATIVE
+    bar_feed: AlpacaDataFeed = AlpacaDataFeed.SIP
+    bar_delay_secs: PositiveInt = 960
+    bar_poll_secs: PositiveInt = 15
     proxy_url: str | None = None
 
 

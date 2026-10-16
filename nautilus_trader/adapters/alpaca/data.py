@@ -21,7 +21,6 @@ import pandas as pd
 
 from nautilus_trader.adapters.alpaca.common.constants import ALPACA_VENUE
 from nautilus_trader.adapters.alpaca.common.enums import AlpacaDataFeed
-from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaQuote
 from nautilus_trader.adapters.alpaca.common.symbol import is_option_symbol
 from nautilus_trader.adapters.alpaca.common.urls import get_ws_data_url
 from nautilus_trader.adapters.alpaca.config import AlpacaDataClientConfig

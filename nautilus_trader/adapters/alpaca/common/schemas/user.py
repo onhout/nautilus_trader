@@ -77,15 +77,13 @@ class AlpacaTradeUpdateData(msgspec.Struct, frozen=True):
         event = self.event
 
         if event in ("new", "accepted", "pending_new", "held", "accepted_for_bidding"):
-            if order.status == OrderStatus.SUBMITTED:
-                exec_client.generate_order_accepted(strategy_id, instrument_id, client_order_id, venue_order_id, ts_event)
+            exec_client._accept(strategy_id, instrument_id, client_order_id, venue_order_id, ts_event)
         elif event in ("fill", "partial_fill"):
             instrument = exec_client._cache.instrument(instrument_id)
             if instrument is None or self.qty is None or self.price is None:
                 exec_client.create_task(exec_client._send_report_for(self.order))
                 return
-            if order.status == OrderStatus.SUBMITTED:
-                exec_client.generate_order_accepted(strategy_id, instrument_id, client_order_id, venue_order_id, ts_event)
+            exec_client._accept(strategy_id, instrument_id, client_order_id, venue_order_id, ts_event)
             trade_id = TradeId(self.execution_id) if self.execution_id else TradeId(UUID4().value)
             exec_client.generate_order_filled(
                 strategy_id=strategy_id,
@@ -111,7 +109,7 @@ class AlpacaTradeUpdateData(msgspec.Struct, frozen=True):
             if order.is_open:
                 exec_client.generate_order_expired(strategy_id, instrument_id, client_order_id, venue_order_id, ts_event)
         elif event == "rejected":
-            if order.status == OrderStatus.SUBMITTED:
+            if order.status == OrderStatus.SUBMITTED and client_order_id not in exec_client._accepted:
                 exec_client.generate_order_rejected(
                     strategy_id, instrument_id, client_order_id, "rejected by Alpaca", ts_event,
                 )

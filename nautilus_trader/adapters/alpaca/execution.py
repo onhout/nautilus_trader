@@ -160,6 +160,8 @@ class AlpacaExecutionClient(LiveExecutionClient):
             exc_types=(AlpacaError,),
             retry_check=should_retry,
         )
+        # The stream can confirm an order before its REST response returns: accept each order once.
+        self._accepted: set[ClientOrderId] = set()
         kind = "PAPER account (simulated money)" if config.environment == AlpacaEnvironment.PAPER else "LIVE account (REAL MONEY)"
         self._log.warning(f"Alpaca execution: {kind}", LogColor.YELLOW)
 
@@ -226,6 +228,15 @@ class AlpacaExecutionClient(LiveExecutionClient):
             qty = position.quantity.as_decimal()
             net += qty if position.is_long else -qty
         return net
+
+    def _accept(self, strategy_id, instrument_id, client_order_id: ClientOrderId, venue_order_id: VenueOrderId, ts_event: int) -> None:
+        if client_order_id in self._accepted:
+            return
+        order = self._cache.order(client_order_id)
+        if order is not None and order.status != OrderStatus.SUBMITTED:
+            return
+        self._accepted.add(client_order_id)
+        self.generate_order_accepted(strategy_id, instrument_id, client_order_id, venue_order_id, ts_event)
 
     def _client_order_id_for(self, order: AlpacaOrder) -> ClientOrderId:
         return self._cache.client_order_id(VenueOrderId(order.id)) or ClientOrderId(order.client_order_id)
@@ -306,11 +317,8 @@ class AlpacaExecutionClient(LiveExecutionClient):
                     order.strategy_id, order.instrument_id, order.client_order_id, e.text, self._clock.timestamp_ns(),
                 )
             return
-        if response.status.value != "rejected" and order.status == OrderStatus.SUBMITTED:
-            self.generate_order_accepted(
-                order.strategy_id, order.instrument_id, order.client_order_id, VenueOrderId(response.id),
-                self._clock.timestamp_ns(),
-            )
+        if response.status.value != "rejected":
+            self._accept(order.strategy_id, order.instrument_id, order.client_order_id, VenueOrderId(response.id), self._clock.timestamp_ns())
 
     async def _submit_order_list(self, command: SubmitOrderList) -> None:
         for order in command.order_list.orders:

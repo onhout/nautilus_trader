@@ -28,6 +28,7 @@ from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaOptionCo
 from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaOptionContracts
 from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaOptionSnapshotsResponse
 from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaQuote
+from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaQuotesResponse
 from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaSnapshot
 from nautilus_trader.adapters.alpaca.http.client import AlpacaHttpClient
 from nautilus_trader.adapters.alpaca.http.endpoint import AlpacaHttpEndpoint
@@ -117,6 +118,30 @@ class AlpacaBarsHttp(AlpacaHttpEndpoint):
         return out
 
 
+class AlpacaQuotesHttp(AlpacaHttpEndpoint):
+    """
+    `GET /v2/stocks/quotes` (Market Data API, historical quotes).
+    """
+
+    def __init__(self, client: AlpacaHttpClient) -> None:
+        super().__init__(client, "/v2/stocks/quotes", data_api=True)
+        self._decoder = msgspec.json.Decoder(AlpacaQuotesResponse)
+
+    async def get(self, params: dict[str, Any], limit: int = 10000, max_pages: int = 500) -> dict[str, list[AlpacaQuote]]:
+        out: dict[str, list[AlpacaQuote]] = {}
+        token: str | None = None
+        for _ in range(max_pages):
+            page = self._decoder.decode(
+                await self._method(HttpMethod.GET, params={**params, "limit": limit, "sort": "asc", "page_token": token}),
+            )
+            for symbol, quotes in (page.quotes or {}).items():
+                out.setdefault(symbol, []).extend(quotes)
+            token = page.next_page_token
+            if not token:
+                break
+        return out
+
+
 class AlpacaNewsHttp(AlpacaHttpEndpoint):
     """
     `GET /v1beta1/news` (Market Data API).
@@ -158,6 +183,7 @@ class AlpacaMarketHttpAPI:
         self._endpoint_stock_bars = AlpacaBarsHttp(client, "/v2/stocks/bars")
         self._endpoint_option_bars = AlpacaBarsHttp(client, "/v1beta1/options/bars")
         self._endpoint_news = AlpacaNewsHttp(client)
+        self._endpoint_stock_quotes = AlpacaQuotesHttp(client)
         self._snapshots_decoder = msgspec.json.Decoder(dict[str, AlpacaSnapshot])
         self._option_snapshots_decoder = msgspec.json.Decoder(AlpacaOptionSnapshotsResponse)
         self._latest_quotes_decoder = msgspec.json.Decoder(AlpacaLatestQuotesResponse)
@@ -239,6 +265,24 @@ class AlpacaMarketHttpAPI:
                 "symbols": ",".join(symbols[i : i + 100]), "timeframe": timeframe, "start": start, "end": end,
             }))
         return out
+
+    async def query_stock_quotes(
+        self,
+        symbols: list[str],
+        start: str,
+        end: str | None = None,
+        feed: AlpacaDataFeed = AlpacaDataFeed.SIP,
+        limit: int = 10000,
+        max_pages: int = 500,
+    ) -> dict[str, list[AlpacaQuote]]:
+        """
+        Return historical quotes per symbol, oldest first (``limit`` per page, at most ``max_pages`` pages).
+        """
+        return await self._endpoint_stock_quotes.get(
+            {"symbols": ",".join(symbols), "start": start, "end": end, "feed": feed.value},
+            limit=limit,
+            max_pages=max_pages,
+        )
 
     async def query_news(
         self,

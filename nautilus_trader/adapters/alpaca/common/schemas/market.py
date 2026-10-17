@@ -147,6 +147,15 @@ class AlpacaLatestQuotesResponse(msgspec.Struct, frozen=True):
     quotes: dict[str, AlpacaQuote] | None = None
 
 
+class AlpacaQuotesResponse(msgspec.Struct, frozen=True):
+    """
+    HTTP response from Alpaca `GET /v2/stocks/quotes` (historical quotes per symbol).
+    """
+
+    quotes: dict[str, list[AlpacaQuote]] | None = None
+    next_page_token: str | None = None
+
+
 class AlpacaNewsArticle(msgspec.Struct, frozen=True):
     """
     A news article (Benzinga) from `GET /v1beta1/news`; ``created_at`` is when it was published.

@@ -22,6 +22,8 @@ from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaAsset
 from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaBar
 from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaBarsResponse
 from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaLatestQuotesResponse
+from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaNewsArticle
+from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaNewsResponse
 from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaOptionContract
 from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaOptionContracts
 from nautilus_trader.adapters.alpaca.common.schemas.market import AlpacaOptionSnapshotsResponse
@@ -115,6 +117,29 @@ class AlpacaBarsHttp(AlpacaHttpEndpoint):
         return out
 
 
+class AlpacaNewsHttp(AlpacaHttpEndpoint):
+    """
+    `GET /v1beta1/news` (Market Data API).
+    """
+
+    def __init__(self, client: AlpacaHttpClient) -> None:
+        super().__init__(client, "/v1beta1/news", data_api=True)
+        self._decoder = msgspec.json.Decoder(AlpacaNewsResponse)
+
+    async def get(self, params: dict[str, Any], max_pages: int = 1000) -> list[AlpacaNewsArticle]:
+        out: list[AlpacaNewsArticle] = []
+        token: str | None = None
+        for _ in range(max_pages):
+            page = self._decoder.decode(
+                await self._method(HttpMethod.GET, params={**params, "limit": 50, "page_token": token}),
+            )
+            out.extend(page.news or [])
+            token = page.next_page_token
+            if not token:
+                break
+        return out
+
+
 class AlpacaMarketHttpAPI:
     """
     Provides access to Alpaca assets, option contracts and market data.
@@ -132,6 +157,7 @@ class AlpacaMarketHttpAPI:
         self._endpoint_contracts = AlpacaOptionContractsHttp(client)
         self._endpoint_stock_bars = AlpacaBarsHttp(client, "/v2/stocks/bars")
         self._endpoint_option_bars = AlpacaBarsHttp(client, "/v1beta1/options/bars")
+        self._endpoint_news = AlpacaNewsHttp(client)
         self._snapshots_decoder = msgspec.json.Decoder(dict[str, AlpacaSnapshot])
         self._option_snapshots_decoder = msgspec.json.Decoder(AlpacaOptionSnapshotsResponse)
         self._latest_quotes_decoder = msgspec.json.Decoder(AlpacaLatestQuotesResponse)
@@ -213,6 +239,25 @@ class AlpacaMarketHttpAPI:
                 "symbols": ",".join(symbols[i : i + 100]), "timeframe": timeframe, "start": start, "end": end,
             }))
         return out
+
+    async def query_news(
+        self,
+        symbols: list[str] | None,
+        start: str,
+        end: str | None = None,
+        include_content: bool = False,
+        sort: str = "asc",
+    ) -> list[AlpacaNewsArticle]:
+        """
+        Return news articles (Benzinga) published in ``[start, end]`` for the symbols (all if ``None``).
+        """
+        return await self._endpoint_news.get({
+            "symbols": ",".join(symbols) if symbols else None,
+            "start": start,
+            "end": end,
+            "sort": sort,
+            "include_content": "true" if include_content else "false",
+        })
 
     async def query_stock_snapshots(
         self,

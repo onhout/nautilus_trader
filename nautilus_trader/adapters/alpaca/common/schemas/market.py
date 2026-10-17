@@ -145,3 +145,29 @@ class AlpacaOptionSnapshotsResponse(msgspec.Struct, frozen=True):
 
 class AlpacaLatestQuotesResponse(msgspec.Struct, frozen=True):
     quotes: dict[str, AlpacaQuote] | None = None
+
+
+class AlpacaNewsArticle(msgspec.Struct, frozen=True):
+    """
+    A news article (Benzinga) from `GET /v1beta1/news`; ``created_at`` is when it was published.
+    """
+
+    id: int
+    headline: str
+    created_at: str
+    updated_at: str | None = None
+    author: str | None = None
+    summary: str | None = None
+    content: str | None = None
+    url: str | None = None
+    symbols: list[str] | None = None
+    source: str | None = None
+
+
+class AlpacaNewsResponse(msgspec.Struct, frozen=True):
+    """
+    HTTP response from Alpaca `GET /v1beta1/news`.
+    """
+
+    news: list[AlpacaNewsArticle] | None = None
+    next_page_token: str | None = None
